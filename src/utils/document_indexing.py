@@ -53,7 +53,7 @@ def index_documents():
     md_files = sorted(glob.glob(os.path.join(MARKDOWN_DIR, "*.md")))
 
     if not md_files:
-        print(f"⚠️  No .md files found in {MARKDOWN_DIR}/")
+        print(f"No .md files found in {MARKDOWN_DIR}/")
         return
 
     for doc_path_str in md_files:
@@ -64,7 +64,7 @@ def index_documents():
             with open(doc_path, "r", encoding="utf-8") as f:
                 md_text = f.read()
         except Exception as e:
-            print(f"❌ Error reading {doc_path.name}: {e}")
+            print(f"Error reading {doc_path.name}: {e}")
             continue
 
         parent_chunks = parent_splitter.split_text(md_text)
@@ -80,18 +80,18 @@ def index_documents():
             all_child_chunks.extend(children)
 
     if not all_child_chunks:
-        print("⚠️ No child chunks to index")
+        print("No child chunks to index")
         return
 
-    print(f"\n🔍 Indexing {len(all_child_chunks)} child chunks into Qdrant...")
+    print(f"\n Indexing {len(all_child_chunks)} child chunks into Qdrant...")
     try:
         child_vector_store.add_documents(all_child_chunks)
         print("✓ Child chunks indexed successfully")
     except Exception as e:
-        print(f"❌ Error indexing child chunks: {e}")
+        print(f"Error indexing child chunks: {e}")
         return
 
-    print(f"💾 Saving {len(all_parent_pairs)} parent chunks to JSON...")
+    print(f"Saving {len(all_parent_pairs)} parent chunks to JSON...")
     for item in os.listdir(PARENT_STORE_PATH):
         os.remove(os.path.join(PARENT_STORE_PATH, item))
 
