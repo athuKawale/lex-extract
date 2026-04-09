@@ -9,7 +9,6 @@ from pydantic import create_model
 from typing import Optional
 
 from src.state import ExtractionState
-from src.schema import SharePurchaseAgreement
 from src.tools import search_child_chunks
 from src.prompt import single_field_extraction_prompt, retry_field_extraction_prompt
 from src.utils.chat_model import llm
@@ -76,7 +75,13 @@ def extract_node(state: ExtractionState, config: RunnableConfig):
     """For each field, perform a deterministic targeted query & extraction."""
     print("\n[EXTRACT_NODE] Starting deterministic targeted extraction...")
     
-    fields = SharePurchaseAgreement.model_fields
+    dynamic_attrs = state.get("attributes_to_extract", {})
+    if not dynamic_attrs:
+        print("[EXTRACT_NODE] No attributes provided to extract. Skipping.")
+        return {"extracted_fields": {}, "retry_count": 0}
+
+    fields_to_extract = dynamic_attrs
+
     mode = os.getenv("EXTRACTION_MODE", "sequential").lower()
     
     results = {}
@@ -85,16 +90,16 @@ def extract_node(state: ExtractionState, config: RunnableConfig):
         print("[EXTRACT_NODE] Running in parallel mode (ThreadPoolExecutor)")
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             future_to_field = {
-                executor.submit(_extract_single_field, name, info.description, config, state): name 
-                for name, info in fields.items()
+                executor.submit(_extract_single_field, name, desc, config, state): name 
+                for name, desc in fields_to_extract.items()
             }
             for future in concurrent.futures.as_completed(future_to_field):
                 name, val = future.result()
                 results[name] = val
     else:
         print("[EXTRACT_NODE] Running in sequential mode")
-        for name, info in fields.items():
-            _, val = _extract_single_field(name, info.description, config, state)
+        for name, desc in fields_to_extract.items():
+            _, val = _extract_single_field(name, desc, config, state)
             results[name] = val
 
     print(f"[EXTRACT_NODE] Initial extraction complete.\n")
@@ -126,7 +131,13 @@ def retry_node(state: ExtractionState, config: RunnableConfig):
     missing_fields = state.get("fields_to_retry", [])
     print(f"\n[RETRY_NODE] Attempt {retry_count}. Retrying missing fields: {missing_fields}")
     
-    fields = SharePurchaseAgreement.model_fields
+    dynamic_attrs = state.get("attributes_to_extract", {})
+    if not dynamic_attrs:
+        print("[RETRY_NODE] No attributes provided to extract. Skipping.")
+        return {"extracted_fields": state.get("extracted_fields", {}), "retry_count": retry_count}
+
+    fields_to_extract = dynamic_attrs
+
     mode = os.getenv("EXTRACTION_MODE", "sequential").lower()
     
     current_fields = state.get("extracted_fields", {}).copy()
@@ -167,8 +178,8 @@ def retry_node(state: ExtractionState, config: RunnableConfig):
     if mode == "parallel":
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             future_to_field = {
-                executor.submit(_retry_single_field, name, fields[name].description, config, state): name 
-                for name in missing_fields if name in fields
+                executor.submit(_retry_single_field, name, fields_to_extract[name], config, state): name 
+                for name in missing_fields if name in fields_to_extract
             }
             for future in concurrent.futures.as_completed(future_to_field):
                 name, val = future.result()
@@ -177,8 +188,8 @@ def retry_node(state: ExtractionState, config: RunnableConfig):
                 retries[name] = val
     else:
         for name in missing_fields:
-            if name in fields:
-                _, val = _retry_single_field(name, fields[name].description, config, state)
+            if name in fields_to_extract:
+                _, val = _retry_single_field(name, fields_to_extract[name], config, state)
                 if val:
                     print(f"  -> Successfully retrieved missing field: '{name}'")
                 retries[name] = val

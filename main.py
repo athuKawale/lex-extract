@@ -19,7 +19,12 @@ def main():
         "fields_to_retry": [],
         "retry_count": 0,
         "final_output": {},
-        "messages": []
+        "messages": [],
+        "attributes_to_extract": {
+             "Party Name": "Name of the entity or individual",
+             "Effective Date": "The date when the agreement takes effect",
+             "Governing Law": "State or jurisdiction whose laws govern the agreement"
+        }
     }
     
     # Run the graph

@@ -6,4 +6,5 @@ class ExtractionState(MessagesState):
     extracted_fields: dict = {}
     fields_to_retry: list = []
     retry_count: int = 0
+    attributes_to_extract: dict = {}
     final_output: dict = {}
