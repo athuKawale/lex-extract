@@ -27,6 +27,7 @@ env/
 .env
 
 # Project specific
+input/
 qdrant_db/
 markdown_output/
 parent_store/

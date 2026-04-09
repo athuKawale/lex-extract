@@ -624,7 +624,14 @@ def results_to_csv(results: dict) -> str:
                 all_attrs.append(k)
     writer.writerow(["Document"] + all_attrs)
     for fname, doc_data in results.items():
-        row = [fname] + [doc_data.get(a, "") for a in all_attrs]
+        row = [fname]
+        for a in all_attrs:
+            val = doc_data.get(a, "")
+            if isinstance(val, list):
+                val = ", ".join(str(v) for v in val)
+            elif isinstance(val, dict):
+                val = json.dumps(val)
+            row.append(val)
         writer.writerow(row)
     return output.getvalue()
 
@@ -664,10 +671,18 @@ def results_to_xlsx(results: dict) -> bytes:
             row_vals = [fname] + [doc_data.get(a, "") for a in all_attrs]
             fill = PatternFill("solid", fgColor="0F0F0F") if row_idx % 2 == 0 else PatternFill("solid", fgColor="131313")
             for col_idx, val in enumerate(row_vals, 1):
+                # Sanitize value for openpyxl (cannot write lists/dicts directly)
+                if isinstance(val, list):
+                    val = "\n".join(str(v) for v in val)
+                elif isinstance(val, dict):
+                    val = json.dumps(val)
+                elif val is None:
+                    val = ""
+                
                 cell = ws.cell(row=row_idx, column=col_idx, value=val)
                 cell.font = data_font
                 cell.fill = fill
-                cell.alignment = Alignment(horizontal='left', vertical='center')
+                cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
                 cell.border = thin_border
 
         ws.freeze_panes = "B2"
@@ -883,11 +898,10 @@ with right_col:
 
     if st.session_state.show_processing and not st.session_state.processing_done:
         # ── Processing Panel ──────────────────────────────
-        # st.markdown('<div class="lex-card">', unsafe_allow_html=True)
         st.markdown('<div class="lex-card-title">⚙️ &nbsp;Processing Pipeline</div>', unsafe_allow_html=True)
 
         steps = [
-            ("Uploading files",            "Transmitting documents to extraction service…"),
+            ("Uploading files",            "Transmitting documents to ingestion buffer…"),
             ("Processing documents",       "Parsing structure, layout & text layers…"),
             ("Extracting attributes",      "Running NLP inference on target fields…"),
             ("Refining & validating",      "Cross-referencing and normalising results…"),
@@ -908,39 +922,46 @@ with right_col:
                 unsafe_allow_html=True
             )
 
-        for i, (label, detail) in enumerate(steps):
-            render_step(step_slots[i], label, detail, "pending")
-
-        start_time = time.time()
-        for i, (label, detail) in enumerate(steps):
-            render_step(step_slots[i], label, detail, "active")
-            delay = random.uniform(0.6, 1.1)
-            for tick in range(10):
-                frac = (i + (tick + 1) / 10) / len(steps)
-                prog_bar.progress(frac)
-                time.sleep(delay / 10)
-            render_step(step_slots[i], label, detail, "done")
-
-        prog_bar.progress(1.0)
-        elapsed = time.time() - start_time
-        timing_slot.markdown(
-            f"<p class='pipeline-done'>✓ Pipeline completed in {elapsed:.1f}s</p>",
-            unsafe_allow_html=True
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Run extraction through backend graph
+        # ── 1. Clear input folder ────────────────────────
         input_dir = "input"
         if os.path.exists(input_dir):
             shutil.rmtree(input_dir)
         os.makedirs(input_dir, exist_ok=True)
-        
+        markdown_dir = "markdown_output"
+        if os.path.exists(markdown_dir):
+            shutil.rmtree(markdown_dir)
+        os.makedirs(markdown_dir, exist_ok=True)
+
+        # ── 2. Run Pipeline with Streaming ────────────────
         real_results = {}
-        for f in uploaded_files:
+        total_files = len(uploaded_files)
+        
+        # Node to Step Index Mapping
+        node_map = {
+            "ingest": 1,
+            "extract": 2,
+            "validate": 3,
+            "retry": 3,
+            "output": 3
+        }
+
+        # Clear existing done/active states
+        for i, (label, detail) in enumerate(steps):
+            render_step(step_slots[i], label, detail, "pending")
+
+        start_time = time.time()
+        
+        for f_idx, f in enumerate(uploaded_files):
+            # Step 0: Uploading
+            render_step(step_slots[0], steps[0][0], f"Saving {f.name} to ingestion buffer...", "active")
+            
             file_path = os.path.join(input_dir, f.name)
             with open(file_path, "wb") as file_out:
                 file_out.write(f.getbuffer())
             
+            render_step(step_slots[0], steps[0][0], f"Uploaded {f_idx+1}/{total_files} documents", "done")
+            
+            # Prepare graph inputs
             inputs = {
                 "pdf_path": file_path,
                 "pdf_text": "",
@@ -952,14 +973,45 @@ with right_col:
                 "attributes_to_extract": st.session_state.attributes
             }
             
-            try:
-                if graph:
-                    final_state = graph.invoke(inputs)
-                    real_results[f.name] = final_state.get("final_output", {})
-                else:
-                    real_results[f.name] = {"error": "Graph import failed."}
-            except Exception as e:
-                real_results[f.name] = {"error": str(e)}
+            if graph:
+                # Stream the graph updates
+                last_node = None
+                for update in graph.stream(inputs, stream_mode="updates"):
+                    # update is a dict: {node_name: {changes}}
+                    node_name = list(update.keys())[0]
+                    step_idx = node_map.get(node_name)
+                    
+                    if step_idx:
+                        # Mark previous mapped step as done if it changed
+                        if last_node and node_map.get(last_node) != step_idx:
+                            prev_idx = node_map.get(last_node)
+                            render_step(step_slots[prev_idx], steps[prev_idx][0], steps[prev_idx][1], "done")
+                        
+                        # Set current step as active
+                        render_step(step_slots[step_idx], steps[step_idx][0], f"Processing: {f.name}", "active")
+                        last_node = node_name
+                    
+                    # Store results if output node finished
+                    if node_name == "output" or node_name == "final_state":
+                        state = update.get(node_name, {})
+                        real_results[f.name] = state.get("final_output", {})
+
+                # Cleanup steps for this file
+                if last_node:
+                    final_idx = node_map.get(last_node)
+                    render_step(step_slots[final_idx], steps[final_idx][0], steps[final_idx][1], "done")
+            else:
+                real_results[f.name] = {"error": "Graph import failed."}
+
+            # Update overall progress bar
+            prog_bar.progress((f_idx + 1) / total_files)
+
+        elapsed = time.time() - start_time
+        timing_slot.markdown(
+            f"<p class='pipeline-done'>✓ Pipeline completed in {elapsed:.1f}s</p>",
+            unsafe_allow_html=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
         st.session_state.results         = real_results
         st.session_state.processing_done = True
