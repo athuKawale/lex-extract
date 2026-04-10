@@ -4,17 +4,18 @@
   <img src="frontend/lex_extract.png" width="100%" alt="LexExtract Dashboard">
 </p>
 
-This repository contains a Proof of Concept (PoC) for high-precision information extraction from PDF documents, specifically tailored for **Share Purchase Agreements (SPAs)**. It leverages **LangGraph** for workflow orchestration, ensuring a robust self-correction loop and optimized retrieval.
+LexExtract is a high-precision document extraction engine designed to turn unstructured legal PDFs into structured, actionable data. Unlike simple RAG systems, LexExtract uses an **agentic loop** to self-correct and verify its own findings, ensuring enterprise-grade accuracy.
 
 ## 🚀 Key Features
 
-- **State-of-the-Art PDF Processing**: Uses `pymupdf4llm` to convert complex PDFs into clean Markdown for better LLM consumption.
-- **Agentic Workflow**: Managed by LangGraph, featuring automated validation and retry logic.
-- **Context-Aware Retrieval**: 
-    - **Preamble Injection**: Automatically prepends the first 1500 characters of the document (the context-rich header/preamble) to every target query.
-    - **Targeted Search**: Uses semantic chunking and Qdrant vector search to find specific fields.
-- **Self-Correction Loop**: Validates extracted data and automatically retries missing or low-confidence fields (up to 2 retry attempts).
-- **Parallel Extraction**: Supports sequential or parallel field extraction (configurable via environment variables).
+- **Multi-Document Processing**: Batch upload and process multiple PDFs simultaneously. Each document is indexed and extracted in isolation to prevent data leakage.
+- **Enterprise-Grade Accuracy**: 
+    - **Self-Correction Loop**: Validates extraction results against expected schemas and automatically triggers "deep search" retries for missing or ambiguous data.
+    - **Preamble Injection**: Automatically identifies and injects the document header (where the most critical context like dates and parties usually reside) into every target query.
+- **State-of-the-Art PDF Parsing**: Leverages `pymupdf4llm` to transform complex PDF layouts into clean LLM-ready Markdown, preserving tables and structure.
+- **Smart Vector Isolation**: Uses Qdrant with specific metadata filtering to ensure that queries for Document A never retrieve context from Document B.
+- **Flexible Model Backend**: Switch seamlessly between local models (Ollama) and cloud providers (OpenAI, Anthropic) without changing code.
+- **Parallel Execution**: Optimized for speed with a configurable parallel extraction mode.
 
 ## 🏗 Architecture
 
@@ -48,11 +49,30 @@ graph TD
    ```
 
 ### Configuration
-Update the `.env` file with your specific settings:
-- `OLLAMA_MODEL`: The model name (e.g., `gemma4:e2b`).
-- `OLLAMA_BASE_URL`: URL for your Ollama instance.
-- `PDF_PATH`: Path to the target PDF in the `input/` folder.
-- `EXTRACTION_MODE`: Set to `parallel` or `sequential`.
+
+Create a `.env` file in the root directory and configure the following variables. You can find a template in `.env.example`.
+
+#### 1. Choose a Model Provider
+The application uses LangChain's `init_chat_model` and supports multiple LLM backends:
+
+| Provider | `MODEL_PROVIDER` | `MODEL_NAME` (Example) | Required Key |
+| :--- | :--- | :--- | :--- |
+| **Ollama** (Local) | `ollama` | `gemma2:9b` | N/A (Local) |
+| **OpenAI** | `openai` | `gpt-4o` | `OPENAI_API_KEY` |
+| **Anthropic** | `anthropic` | `claude-3-5-sonnet-20240620` | `ANTHROPIC_API_KEY` |
+
+#### 2. Environment Variables
+- `MODEL_PROVIDER`: The backend provider (see table above).
+- `MODEL_NAME`: The specific model version you wish to use.
+- `OLLAMA_BASE_URL`: (Only for Ollama) Usually `http://localhost:11434`.
+- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: Your respective API keys.
+- `PDF_PATH`: The default file path for the CLI runner.
+- `EXTRACTION_MODE`: Set to `parallel` (faster) or `sequential` (lower resource usage).
+
+#### 3. Optional: LangSmith (Tracing)
+To enable debugging and tracing of your extraction chains:
+- `LANGCHAIN_TRACING_V2`: Set to `true`.
+- `LANGCHAIN_API_KEY`: Your LangSmith API key.
 
 ## 📖 Usage
 
