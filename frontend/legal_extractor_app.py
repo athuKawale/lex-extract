@@ -1,4 +1,8 @@
 import streamlit as st
+import warnings
+
+# Suppress annoying __path__ access warnings from certain internal libraries
+warnings.filterwarnings("ignore", message=".*Accessing __path__ from.*")
 import json
 import csv
 import io
@@ -922,14 +926,10 @@ with right_col:
                 unsafe_allow_html=True
             )
 
-        # ── 1. Clear input folder ────────────────────────
+        # ── 1. Preparation (Persistent) ───────────────────
         input_dir = "input"
-        if os.path.exists(input_dir):
-            shutil.rmtree(input_dir)
         os.makedirs(input_dir, exist_ok=True)
         markdown_dir = "markdown_output"
-        if os.path.exists(markdown_dir):
-            shutil.rmtree(markdown_dir)
         os.makedirs(markdown_dir, exist_ok=True)
 
         # ── 2. Run Pipeline with Streaming ────────────────
@@ -961,6 +961,12 @@ with right_col:
             
             render_step(step_slots[0], steps[0][0], f"Uploaded {f_idx+1}/{total_files} documents", "done")
             
+            # ── Proactive State Transition ──
+            # Set next step to 'active' immediately so the user sees progress while the graph initializes
+            render_step(step_slots[1], steps[1][0], f"Initializing Ingestion: {f.name}...", "active")
+
+            file_tag = f"[{f_idx+1}/{total_files}]"
+            
             # Prepare graph inputs
             inputs = {
                 "pdf_path": file_path,
@@ -975,31 +981,29 @@ with right_col:
             
             if graph:
                 # Stream the graph updates
-                last_node = None
+                # We start by assuming Step 1 is active (set proactively before this if block)
                 for update in graph.stream(inputs, stream_mode="updates"):
-                    # update is a dict: {node_name: {changes}}
                     node_name = list(update.keys())[0]
-                    step_idx = node_map.get(node_name)
+                    finished_step_idx = node_map.get(node_name)
                     
-                    if step_idx:
-                        # Mark previous mapped step as done if it changed
-                        if last_node and node_map.get(last_node) != step_idx:
-                            prev_idx = node_map.get(last_node)
-                            render_step(step_slots[prev_idx], steps[prev_idx][0], steps[prev_idx][1], "done")
+                    if finished_step_idx is not None:
+                        # 1. Mark the step that just yielded as DONE
+                        render_step(step_slots[finished_step_idx], steps[finished_step_idx][0], steps[finished_step_idx][1], "done")
                         
-                        # Set current step as active
-                        render_step(step_slots[step_idx], steps[step_idx][0], f"Processing: {f.name}", "active")
-                        last_node = node_name
+                        # 2. PROACTIVE: Mark the NEXT step as ACTIVE immediately
+                        # Node order: ingest (1) -> extract (2) -> validate/retry/output (3)
+                        if finished_step_idx < 3:
+                            next_idx = finished_step_idx + 1
+                            render_step(step_slots[next_idx], steps[next_idx][0], f"{file_tag} {steps[next_idx][0]} in progress...", "active")
                     
                     # Store results if output node finished
                     if node_name == "output" or node_name == "final_state":
                         state = update.get(node_name, {})
                         real_results[f.name] = state.get("final_output", {})
 
-                # Cleanup steps for this file
-                if last_node:
-                    final_idx = node_map.get(last_node)
-                    render_step(step_slots[final_idx], steps[final_idx][0], steps[final_idx][1], "done")
+                # Finalize all steps for this document
+                for i in range(1, 4):
+                    render_step(step_slots[i], steps[i][0], steps[i][1], "done")
             else:
                 real_results[f.name] = {"error": "Graph import failed."}
 

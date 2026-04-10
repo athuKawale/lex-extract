@@ -1,6 +1,7 @@
 import os
 import glob
 import concurrent.futures
+from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.prompts import PromptTemplate
@@ -17,21 +18,43 @@ from src.utils.document_indexing import init_collection, index_documents
 
 
 
+from src.utils.cache_manager import get_file_hash, is_file_processed, update_cache_registry
+
 def ingest_node(state: ExtractionState):
     """Load PDF with pymupdf4llm, chunk + embed to Qdrant"""
-    print(f"\n[INGEST_NODE] Processing PDF at {state.get('pdf_path', 'default')}")
+    pdf_path = state.get("pdf_path")
+    filename = os.path.basename(pdf_path)
+    
+    print(f"\n[INGEST_NODE] Checking cache for {filename}")
+    
+    file_hash = get_file_hash(pdf_path)
+    
+    if is_file_processed(filename, file_hash):
+        print(f"[INGEST_NODE] Document {filename} already indexed. Skipping ingestion.")
+        # Load existing full text from markdown
+        md_path = os.path.join("markdown_output", f"{Path(filename).stem}.md")
+        full_text = ""
+        if os.path.exists(md_path):
+            with open(md_path, "r", encoding="utf-8") as f:
+                full_text = f.read()
+        return {"pdf_text": full_text}
+
+    print(f"[INGEST_NODE] Processing new/modified PDF: {filename}")
     
     # 1. Convert to Markdown
-    pdfs_to_markdowns(path_pattern=state.get("pdf_path"), overwrite=True)
+    pdfs_to_markdowns(path_pattern=pdf_path, overwrite=False)
     
-    # 2. Init Qdrant Collection and Index
-    init_collection()
-    index_documents()
+    # 2. Init Qdrant Collection (Incremental) and Index only this file
+    init_collection(force_recreate=False)
+    index_documents(specific_files=[filename])
+    
+    # Update registry
+    update_cache_registry(filename, file_hash)
     
     full_text = ""
-    md_files = glob.glob("markdown_output/*.md")
-    if md_files:
-        with open(md_files[0], "r", encoding="utf-8") as f:
+    md_path = os.path.join("markdown_output", f"{Path(filename).stem}.md")
+    if os.path.exists(md_path):
+        with open(md_path, "r", encoding="utf-8") as f:
             full_text = f.read()
     
     return {"pdf_text": full_text}

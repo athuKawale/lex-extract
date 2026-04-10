@@ -33,15 +33,23 @@ def get_child_vector_store(mode: RetrievalMode = RetrievalMode.DENSE):
 # Default instance for legacy compatibility
 child_vector_store = get_child_vector_store(RetrievalMode.DENSE)
 
-def init_collection():
+def init_collection(force_recreate: bool = False):
+    """Ensure the Qdrant collection exists. Recreates it only if force_recreate is True."""
     if client.collection_exists(CHILD_COLLECTION):
-        print(f"Removing existing Qdrant collection: {CHILD_COLLECTION}")
-        client.delete_collection(CHILD_COLLECTION)
-        ensure_collection(CHILD_COLLECTION)
+        if force_recreate:
+            print(f"Removing existing Qdrant collection: {CHILD_COLLECTION}")
+            client.delete_collection(CHILD_COLLECTION)
+            ensure_collection(CHILD_COLLECTION)
+        else:
+            print(f"Collection {CHILD_COLLECTION} already exists. Skipping recreation.")
     else:
         ensure_collection(CHILD_COLLECTION)
 
-def index_documents():
+def index_documents(specific_files: list = None):
+    """
+    Index markdown files into Qdrant. 
+    If specific_files is provided, only those filenames (basenames) are indexed.
+    """
     headers_to_split_on = [("#", "H1"), ("##", "H2"), ("###", "H3")]
     parent_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on, strip_headers=False)
     child_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -50,10 +58,17 @@ def index_documents():
     max_parent_size = 4000
 
     all_parent_pairs, all_child_chunks = [], []
-    md_files = sorted(glob.glob(os.path.join(MARKDOWN_DIR, "*.md")))
+    
+    # Filter files
+    if specific_files:
+        md_files = [os.path.join(MARKDOWN_DIR, f"{Path(f).stem}.md") for f in specific_files]
+        # Keep only existing ones
+        md_files = [f for f in md_files if os.path.exists(f)]
+    else:
+        md_files = sorted(glob.glob(os.path.join(MARKDOWN_DIR, "*.md")))
 
     if not md_files:
-        print(f"No .md files found in {MARKDOWN_DIR}/")
+        print(f"No .md files found to index in {MARKDOWN_DIR}/")
         return
 
     for doc_path_str in md_files:
@@ -80,7 +95,7 @@ def index_documents():
             all_child_chunks.extend(children)
 
     if not all_child_chunks:
-        print("No child chunks to index")
+        print("No child chunks found in the provided documents.")
         return
 
     print(f"\n Indexing {len(all_child_chunks)} child chunks into Qdrant...")
@@ -92,9 +107,8 @@ def index_documents():
         return
 
     print(f"Saving {len(all_parent_pairs)} parent chunks to JSON...")
-    for item in os.listdir(PARENT_STORE_PATH):
-        os.remove(os.path.join(PARENT_STORE_PATH, item))
-
+    # NOTE: We no longer clear the entire PARENT_STORE_PATH to support incremental indexing.
+    # Instead, we just write/overwrite the relevant parent IDs.
     for parent_id, doc in all_parent_pairs:
         doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
         filepath = os.path.join(PARENT_STORE_PATH, f"{parent_id}.json")

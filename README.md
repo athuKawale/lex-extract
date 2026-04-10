@@ -52,22 +52,32 @@ Update the `.env` file with your specific settings:
 
 ## 📖 Usage
 
+### Web Interface (Recommended)
+Launch the interactive dashboard to upload documents and define extraction attributes:
+```bash
+python main.py
+```
+
+### CLI Workflow
+For automated batch processing or testing without the UI:
 1. Place your target PDF in the `input/` directory.
-2. Update the `PDF_PATH` in `.env` if necessary.
-3. Run the extraction workflow:
+2. Update the `PDF_PATH` in `.env`.
+3. Run the CLI runner:
    ```bash
-   python main.py
+   python src/cli_runner.py
    ```
-4. The final extracted data will be saved to `output.json`.
+The final extracted data will be saved to `output.json`.
 
 ## 📁 Project Structure
 
+- `main.py`: Interactive entry point (launches Streamlit UI).
+- `src/cli_runner.py`: CLI-based extraction workflow runner.
 - `src/nodes.py`: Implementation of LangGraph nodes (Ingest, Extract, Validate, Retry).
 - `src/graph.py`: Definition of the StateGraph and routing logic.
 - `src/schema.py`: Pydantic models defining the extraction target (SharePurchaseAgreement).
 - `src/utils/`: Helper utilities for PDF processing, chat models, and document indexing.
 - `input/`: Directory for source PDF documents.
-- `main.py`: Entry point to execute the workflow.
+- `frontend/`: Streamlit web application files.
 
 ---
 *Built for specialized legal document extraction workflows.*

@@ -1,48 +1,30 @@
+import sys
 import os
-import json
-from dotenv import load_dotenv
+import warnings
+from streamlit.web import cli as stcli
 
-load_dotenv()
-
-from src.graph import graph
+# Suppress annoying __path__ access warnings from certain internal libraries
+warnings.filterwarnings("ignore", message=".*Accessing __path__ from.*")
 
 def main():
-    print("Starting PDF Extraction Workflow!")
+    """
+    Launcher for the LexExtract Streamlit application.
+    This allows the application to be started using 'python main.py'.
+    """
+    # Get the path to the streamlit app script
+    script_path = os.path.join(os.path.dirname(__file__), "frontend", "legal_extractor_app.py")
     
-    pdf_path = os.getenv("PDF_PATH", "input/POC_TEST_SPA.pdf")
+    # Configure arguments for streamlit run
+    sys.argv = [
+        "streamlit",
+        "run",
+        script_path,
+        "--server.port=8501",
+        "--server.address=0.0.0.0",
+    ]
     
-    # Define inputs for the state
-    inputs = {
-        "pdf_path": pdf_path,
-        "pdf_text": "",
-        "extracted_fields": {},
-        "fields_to_retry": [],
-        "retry_count": 0,
-        "final_output": {},
-        "messages": [],
-        "attributes_to_extract": {
-             "Party Name": "Name of the entity or individual",
-             "Effective Date": "The date when the agreement takes effect",
-             "Governing Law": "State or jurisdiction whose laws govern the agreement"
-        }
-    }
-    
-    # Run the graph
-    try:
-        final_state = graph.invoke(inputs)
-        
-        print("\n=== FINAL EXTRACTED JSON ===")
-        print(json.dumps(final_state.get("final_output", {}), indent=2))
-        
-        # Save output to a file
-        with open("output.json", "w") as f:
-            json.dump(final_state.get("final_output", {}), f, indent=2)
-            
-        print("\nResults saved to output.json")
-        
-    except Exception as e:
-        print(f"\nWorkflow failed: {e}")
+    # Execute streamlit
+    sys.exit(stcli.main())
 
 if __name__ == "__main__":
     main()
-
