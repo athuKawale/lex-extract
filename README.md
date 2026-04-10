@@ -1,7 +1,7 @@
 # LexExtract - Targeted Document Extraction
 
 <p align="center">
-  <img src="frontend/lex_extract.png" width="100%" alt="LexExtract Dashboard">
+  <img src="frontend/image1.png" width="70%" alt="LexExtract Dashboard">
 </p>
 
 LexExtract is a high-precision document extraction engine designed to turn unstructured legal PDFs into structured, actionable data. Unlike simple RAG systems, LexExtract uses an **agentic loop** to self-correct and verify its own findings, ensuring enterprise-grade accuracy.
