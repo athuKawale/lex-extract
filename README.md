@@ -103,5 +103,9 @@ The final extracted data will be saved to `output.json`.
 - `input/`: Directory for source PDF documents.
 - `frontend/`: Streamlit web application files.
 
+## 📜 License
+
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
+
 ---
 *Built for specialized legal document extraction workflows.*
