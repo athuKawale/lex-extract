@@ -1,4 +1,8 @@
-# Execo PoC - Targeted Document Extraction
+# LexExtract - Targeted Document Extraction
+
+<p align="center">
+  <img src="frontend/lex_extract.png" width="100%" alt="LexExtract Dashboard">
+</p>
 
 This repository contains a Proof of Concept (PoC) for high-precision information extraction from PDF documents, specifically tailored for **Share Purchase Agreements (SPAs)**. It leverages **LangGraph** for workflow orchestration, ensuring a robust self-correction loop and optimized retrieval.
 

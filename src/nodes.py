@@ -62,7 +62,16 @@ def ingest_node(state: ExtractionState):
 def _extract_single_field(field_name: str, field_desc: str, config: RunnableConfig, state: ExtractionState = None) -> tuple[str, str]:
     """Helper to query the vector store and extract a single field."""
     query = f"Find information regarding: {field_name}. {field_desc}"
-    retrieved_context = search_child_chunks.invoke({"query": query, "limit": 3})
+    
+    file_name = None
+    if state and state.get("pdf_path"):
+        file_name = os.path.basename(state.get("pdf_path"))
+
+    retrieved_context = search_child_chunks.invoke({
+        "query": query, 
+        "limit": 3,
+        "file_name": file_name
+    })
     
     if state and state.get("pdf_text"):
         header_context = "--- DOCUMENT PREAMBLE / HEADER ---\n" + state["pdf_text"][:1500] + "\n\n--- SEMANTIC SEARCH CONTEXT ---\n"
@@ -88,6 +97,7 @@ def _extract_single_field(field_name: str, field_desc: str, config: RunnableConf
         "field_desc": field_desc,
         "retrieved_context": retrieved_context
     }, config=config)
+
     
     value = result.get("extracted_value") if isinstance(result, dict) else None
     
@@ -168,7 +178,16 @@ def retry_node(state: ExtractionState, config: RunnableConfig):
     
     def _retry_single_field(field_name, field_desc, config, state=None):
         query = f"Identify any details discussing the {field_name}. {field_desc}"
-        retrieved_context = search_child_chunks.invoke({"query": query, "limit": 5})
+        
+        file_name = None
+        if state and state.get("pdf_path"):
+            file_name = os.path.basename(state.get("pdf_path"))
+            
+        retrieved_context = search_child_chunks.invoke({
+            "query": query, 
+            "limit": 5,
+            "file_name": file_name
+        })
         
         if state and state.get("pdf_text"):
             header_context = "--- DOCUMENT PREAMBLE / HEADER ---\n" + state["pdf_text"][:1500] + "\n\n--- SEMANTIC SEARCH CONTEXT ---\n"

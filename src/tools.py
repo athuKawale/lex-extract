@@ -3,16 +3,32 @@ import os
 from langchain_core.tools import tool
 from src.utils.document_indexing import child_vector_store, PARENT_STORE_PATH
 
+from typing import Optional
+from qdrant_client.http import models
+
 @tool
-def search_child_chunks(query: str, limit: int) -> str:
+def search_child_chunks(query: str, limit: int, file_name: Optional[str] = None) -> str:
     """Search for the top K most relevant child chunks.
 
     Args:
         query: Search query string
         limit: Maximum number of results to return
+        file_name: Optional file name to restrict search (e.g., 'document.pdf')
     """
     try:
-        results = child_vector_store.similarity_search(query, k=limit)
+        if file_name:
+            q_filter = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="metadata.source",
+                        match=models.MatchValue(value=file_name)
+                    )
+                ]
+            )
+            results = child_vector_store.similarity_search(query, k=limit, filter=qdrant_client_fallback_filter(file_name))
+        else:
+            results = child_vector_store.similarity_search(query, k=limit)
+            
         if not results:
             return "NO_RELEVANT_CHUNKS"
 
@@ -25,6 +41,19 @@ def search_child_chunks(query: str, limit: int) -> str:
 
     except Exception as e:
         return f"RETRIEVAL_ERROR: {str(e)}"
+
+def qdrant_client_fallback_filter(file_name):
+    """Helper to try dict filtering or fallback to models.Filter"""
+    # Langchain's Qdrant vector store accepts models.Filter directly.
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="metadata.source",
+                match=models.MatchValue(value=file_name)
+            )
+        ]
+    )
+
 
 @tool
 def retrieve_parent_chunks(parent_id: str) -> str:

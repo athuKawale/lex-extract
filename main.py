@@ -3,8 +3,12 @@ import os
 import warnings
 from streamlit.web import cli as stcli
 
-# Suppress annoying __path__ access warnings from certain internal libraries
-warnings.filterwarnings("ignore", message=".*Accessing __path__ from.*")
+# Suppress annoying __path__ access warnings deeply at the interpreter level
+os.environ["PYTHONWARNINGS"] = "ignore"
+
+# Also try explicit python warnings filter (catch all for transformer warnings)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, message=".*__path__.*")
 
 def main():
     """

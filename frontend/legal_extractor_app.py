@@ -766,6 +766,20 @@ with left_col:
             unsafe_allow_html=True
         )
 
+    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+    
+    col_cache, _ = st.columns([1, 1])
+    with col_cache:
+        if st.button("🗑️ Clear Processing Cache", use_container_width=True, help="Wipes the vector database and processed document memory."):
+            try:
+                from src.utils.cache_manager import clear_cache
+                from src.utils.document_indexing import init_collection
+                clear_cache()
+                init_collection(force_recreate=True)
+                st.toast("System cache and vector database cleared successfully!", icon="✅")
+            except Exception as e:
+                st.error(f"Failed to clear cache: {e}")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
     # ── 2. Attribute Builder ──────────────────────────────
